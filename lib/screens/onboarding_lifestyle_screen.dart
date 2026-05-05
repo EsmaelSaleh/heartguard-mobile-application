@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:go_router/go_router.dart';
 import '../theme.dart';
+import '../services/onboarding_service.dart';
 
 class OnboardingLifestyleScreen extends StatefulWidget {
   const OnboardingLifestyleScreen({super.key});
@@ -11,10 +12,24 @@ class OnboardingLifestyleScreen extends StatefulWidget {
 }
 
 class _OnboardingLifestyleScreenState extends State<OnboardingLifestyleScreen> {
-  String? _activityLevel;
   String? _smokingStatus;
-
   double _cigarettesPerDay = 0;
+  bool _isLoading = false;
+
+  Future<void> _handleContinue() async {
+    setState(() => _isLoading = true);
+
+    final cigarettes = (_smokingStatus == 'Non-smoker' || _smokingStatus == null)
+        ? 0
+        : _cigarettesPerDay.toInt();
+
+    await OnboardingService.saveLifestyle(cigarettesPerDay: cigarettes);
+
+    if (mounted) {
+      setState(() => _isLoading = false);
+      context.go('/onboarding/medical-history');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -32,28 +47,19 @@ class _OnboardingLifestyleScreenState extends State<OnboardingLifestyleScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text(
-              'Your daily habits',
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900),
-            ),
+            const Text('Your daily habits', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900)),
             const SizedBox(height: 8),
             Text(
               'Help us understand how your lifestyle impacts your heart health.',
               style: TextStyle(color: Colors.grey[600], fontSize: 14),
             ),
             const SizedBox(height: 32),
-            _buildSectionTitle('Activity Level', LucideIcons.zap),
-            const SizedBox(height: 12),
-            _buildSelectableOption('Sedentary', 'Little to no exercise', _activityLevel, (v) => setState(() => _activityLevel = v)),
-            _buildSelectableOption('Active', 'Exercise 3-5 times/week', _activityLevel, (v) => setState(() => _activityLevel = v)),
-            _buildSelectableOption('Athlete', 'Daily intense exercise', _activityLevel, (v) => setState(() => _activityLevel = v)),
-            const SizedBox(height: 24),
             _buildSectionTitle('Smoking Status', LucideIcons.info),
             const SizedBox(height: 12),
             _buildSelectableOption('Non-smoker', 'Never or quit long ago', _smokingStatus, (v) => setState(() => _smokingStatus = v)),
             _buildSelectableOption('Occasional', 'Socially or rarely', _smokingStatus, (v) => setState(() => _smokingStatus = v)),
             _buildSelectableOption('Regular', 'Daily or frequently', _smokingStatus, (v) => setState(() => _smokingStatus = v)),
-            
+
             if (_smokingStatus == 'Occasional' || _smokingStatus == 'Regular') ...[
               const SizedBox(height: 32),
               _buildSectionTitle('Average Cigarettes per day', LucideIcons.cigarette),
@@ -76,10 +82,8 @@ class _OnboardingLifestyleScreenState extends State<OnboardingLifestyleScreen> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         const Text('Daily Count', style: TextStyle(fontWeight: FontWeight.w600)),
-                        Text(
-                          '${_cigarettesPerDay.toInt()} / day',
-                          style: const TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold, fontSize: 18),
-                        ),
+                        Text('${_cigarettesPerDay.toInt()} / day',
+                            style: const TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold, fontSize: 18)),
                       ],
                     ),
                     const SizedBox(height: 16),
@@ -127,11 +131,11 @@ class _OnboardingLifestyleScreenState extends State<OnboardingLifestyleScreen> {
                 Expanded(
                   flex: 2,
                   child: ElevatedButton(
-                    onPressed: () => context.go('/onboarding/medical-history'),
-                    style: ElevatedButton.styleFrom(
-                      minimumSize: const Size(0, 56),
-                    ),
-                    child: const Text('Continue'),
+                    onPressed: _isLoading ? null : _handleContinue,
+                    style: ElevatedButton.styleFrom(minimumSize: const Size(0, 56)),
+                    child: _isLoading
+                        ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                        : const Text('Continue'),
                   ),
                 ),
               ],
@@ -147,10 +151,7 @@ class _OnboardingLifestyleScreenState extends State<OnboardingLifestyleScreen> {
       children: [
         Icon(icon, color: AppTheme.primary, size: 20),
         const SizedBox(width: 8),
-        Text(
-          title,
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-        ),
+        Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
       ],
     );
   }
@@ -178,8 +179,7 @@ class _OnboardingLifestyleScreenState extends State<OnboardingLifestyleScreen> {
                 ],
               ),
             ),
-            if (isSelected)
-              const Icon(LucideIcons.checkCircle2, color: AppTheme.primary, size: 20),
+            if (isSelected) const Icon(LucideIcons.checkCircle2, color: AppTheme.primary, size: 20),
           ],
         ),
       ),
