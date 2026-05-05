@@ -1,9 +1,11 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:go_router/go_router.dart';
 import 'package:file_picker/file_picker.dart';
 import '../theme.dart';
 import '../models/assessment_data.dart';
+import '../services/assessment_service.dart';
 
 class AssessmentEcgScreen extends StatefulWidget {
   final AssessmentData assessment;
@@ -15,37 +17,45 @@ class AssessmentEcgScreen extends StatefulWidget {
 
 class _AssessmentEcgScreenState extends State<AssessmentEcgScreen> {
   bool _isAnalyzing = false;
-  String? _selectedFile; 
+  String? _selectedFileName;
+  File? _selectedFile;
 
   Future<void> _pickEcgFile() async {
-    final result = await FilePicker.pickFiles(
+    final result = await FilePicker.platform.pickFiles(
       type: FileType.image,
       allowMultiple: false,
     );
 
-    if (result != null && result.files.single.name.isNotEmpty) {
+    if (result != null && result.files.single.path != null) {
       setState(() {
-        _selectedFile = result.files.single.name;
+        _selectedFileName = result.files.single.name;
+        _selectedFile = File(result.files.single.path!);
       });
     }
   }
 
   void _handleSubmit() async {
-    if (_selectedFile == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please upload an ECG image to continue.')),
-      );
-      return;
-    }
-
     setState(() => _isAnalyzing = true);
-    
-    // Simulate AI Analysis
-    await Future.delayed(const Duration(seconds: 3));
-    
+
+    final result = await AssessmentService.submitAssessment(
+      cholesterol: widget.assessment.cholesterol,
+      bmi: widget.assessment.bmi,
+      heartRate: widget.assessment.heartRate,
+      glucose: widget.assessment.glucose,
+      pulsePressure: widget.assessment.pulsePressure ?? 0,
+      ecgFile: _selectedFile,
+    );
+
     if (mounted) {
       setState(() => _isAnalyzing = false);
-      context.go('/risk-report', extra: {'vitals': widget.assessment.toMap(), 'ecg': _selectedFile});
+      if (result != null && result['error'] == null) {
+        context.go('/risk-report', extra: {'assessment': result, 'vitals': widget.assessment.toMap()});
+      } else {
+        final errMsg = result?['error'] as String? ?? 'Assessment failed. Please try again.';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(errMsg), backgroundColor: Colors.red),
+        );
+      }
     }
   }
 
@@ -65,18 +75,13 @@ class _AssessmentEcgScreenState extends State<AssessmentEcgScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text(
-              'Upload ECG Report',
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900),
-            ),
+            const Text('Upload ECG Report', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900)),
             const SizedBox(height: 8),
             Text(
               'Upload a photo of your ECG strip. Our AI will analyse your cardiac rhythm for a complete assessment.',
               style: TextStyle(color: Colors.grey[600], fontSize: 16),
             ),
             const SizedBox(height: 32),
-            
-            // Vitals Summary
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
@@ -87,7 +92,8 @@ class _AssessmentEcgScreenState extends State<AssessmentEcgScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('VITALS FROM PREVIOUS STEP', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppTheme.primary, letterSpacing: 1)),
+                  const Text('VITALS FROM PREVIOUS STEP',
+                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppTheme.primary, letterSpacing: 1)),
                   const SizedBox(height: 12),
                   Wrap(
                     spacing: 16,
@@ -97,64 +103,57 @@ class _AssessmentEcgScreenState extends State<AssessmentEcgScreen> {
                 ],
               ),
             ),
-            
             const SizedBox(height: 32),
-            
-            // Upload Area
             GestureDetector(
-              onTap: _pickEcgFile,
+              onTap: _isAnalyzing ? null : _pickEcgFile,
               child: Container(
                 padding: const EdgeInsets.symmetric(vertical: 48),
                 decoration: BoxDecoration(
                   color: const Color(0xFFF8FAFC),
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: _selectedFile != null ? AppTheme.primary : const Color(0xFFE2E8F0), style: BorderStyle.solid),
+                  border: Border.all(
+                    color: _selectedFileName != null ? AppTheme.primary : const Color(0xFFE2E8F0),
+                  ),
                 ),
                 child: Column(
                   children: [
                     Container(
                       padding: const EdgeInsets.all(20),
-                      decoration: BoxDecoration(
-                        color: AppTheme.primary.withOpacity(0.1),
-                        shape: BoxShape.circle,
-                      ),
+                      decoration: BoxDecoration(color: AppTheme.primary.withOpacity(0.1), shape: BoxShape.circle),
                       child: Icon(
-                        _selectedFile != null ? LucideIcons.checkCircle2 : LucideIcons.uploadCloud,
+                        _selectedFileName != null ? LucideIcons.checkCircle2 : LucideIcons.uploadCloud,
                         size: 48,
                         color: AppTheme.primary,
                       ),
                     ),
                     const SizedBox(height: 24),
                     Text(
-                      _selectedFile ?? 'Tap to upload ECG strip',
+                      _selectedFileName ?? 'Tap to upload ECG strip (optional)',
                       style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18),
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      _selectedFile != null ? 'Ready for AI analysis' : 'Supported: JPG, PNG, GIF',
+                      _selectedFileName != null ? 'Ready for AI analysis' : 'Supported: JPG, PNG — or skip for vitals-only assessment',
                       style: TextStyle(color: Colors.grey[600], fontSize: 14),
+                      textAlign: TextAlign.center,
                     ),
                   ],
                 ),
               ),
             ),
-            
             const SizedBox(height: 32),
-            
-            // Guidelines
-            const Text('SCANNED GUIDELINES', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.blueGrey)),
+            const Text('SCANNING GUIDELINES', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.blueGrey)),
             const SizedBox(height: 16),
             _buildGuideline(LucideIcons.sun, 'Ensure good lighting', 'Avoid shadows or glare on the paper.'),
             _buildGuideline(LucideIcons.eye, 'Capture full strip', 'All waves and text must be visible.'),
-            
             const SizedBox(height: 48),
             Row(
               children: [
                 Expanded(
                   flex: 1,
                   child: OutlinedButton(
-                    onPressed: () => context.pop(),
+                    onPressed: _isAnalyzing ? null : () => context.pop(),
                     style: OutlinedButton.styleFrom(
                       minimumSize: const Size(0, 64),
                       side: BorderSide(color: Colors.grey[200]!),
@@ -172,9 +171,16 @@ class _AssessmentEcgScreenState extends State<AssessmentEcgScreen> {
                       minimumSize: const Size(0, 64),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                     ),
-                    child: _isAnalyzing 
-                      ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                      : const Text('Predict Risk', style: TextStyle(fontSize: 16)),
+                    child: _isAnalyzing
+                        ? const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
+                              SizedBox(width: 12),
+                              Text('Analysing...', style: TextStyle(color: Colors.white)),
+                            ],
+                          )
+                        : const Text('Predict Risk', style: TextStyle(fontSize: 16)),
                   ),
                 ),
               ],
