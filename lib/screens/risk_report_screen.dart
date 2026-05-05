@@ -1,19 +1,45 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 import '../theme.dart';
 import '../widgets/app_drawer.dart';
+import '../services/assessment_service.dart';
+import '../providers/auth_provider.dart';
 import 'dart:math' as math;
 
 class RiskReportScreen extends StatelessWidget {
   final Map<String, dynamic> data;
   const RiskReportScreen({super.key, required this.data});
 
+  Map<String, dynamic> get _assessment {
+    return (data['assessment'] as Map<String, dynamic>?) ?? data;
+  }
+
+  int get _riskScore {
+    final a = _assessment;
+    final combined = AssessmentService.parseScore(a['combined_risk_score']);
+    if (combined > 0) return (combined * 100).round().clamp(0, 100);
+    return (AssessmentService.parseScore(a['risk_score'])).round().clamp(0, 100);
+  }
+
+  String get _riskLevel => (_assessment['risk_level'] as String? ?? 'low').toLowerCase();
+
+  Color _levelColor(String level) {
+    switch (level) {
+      case 'high': return Colors.red;
+      case 'moderate': return Colors.amber[700]!;
+      default: return Colors.green;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final vitals = data['vitals'] as Map<String, double>;
-    const riskScore = 68; // Mock risk score for demo
-    const riskLevel = 'moderate'; 
+    final auth = context.watch<AuthProvider>();
+    final score = _riskScore;
+    final level = _riskLevel;
+    final color = _levelColor(level);
+    final a = _assessment;
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -25,16 +51,15 @@ class RiskReportScreen extends StatelessWidget {
           onPressed: () => context.go('/dashboard'),
         ),
         actions: [
-          IconButton(onPressed: () {}, icon: const Icon(LucideIcons.download)),
           Builder(
-            builder: (context) => GestureDetector(
-              onTap: () => Scaffold.of(context).openDrawer(),
-              child: const Padding(
-                padding: EdgeInsets.only(right: 16),
+            builder: (ctx) => GestureDetector(
+              onTap: () => Scaffold.of(ctx).openDrawer(),
+              child: Padding(
+                padding: const EdgeInsets.only(right: 16),
                 child: CircleAvatar(
                   radius: 16,
                   backgroundColor: AppTheme.primary,
-                  child: Text('ES', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                  child: Text(auth.initials, style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
                 ),
               ),
             ),
@@ -46,15 +71,15 @@ class RiskReportScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _buildReportHeader(),
+            _buildReportHeader(a),
             const SizedBox(height: 32),
-            _buildRiskGauge(riskScore, riskLevel),
+            _buildRiskGauge(score, level, color),
             const SizedBox(height: 32),
-            _buildAiFindings(),
+            _buildAiFindings(a),
             const SizedBox(height: 32),
-            _buildMetricBreakdown(vitals),
+            _buildMetricBreakdown(a),
             const SizedBox(height: 32),
-            _buildRecommendations(),
+            _buildRecommendations(a),
             const SizedBox(height: 48),
             _buildActions(context),
           ],
@@ -63,7 +88,11 @@ class RiskReportScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildReportHeader() {
+  Widget _buildReportHeader(Map<String, dynamic> a) {
+    final createdAt = a['created_at'] as String? ?? '';
+    final id = (a['id'] as String? ?? '').toUpperCase().replaceAll('-', '').substring(0, math.min(8, (a['id'] as String? ?? '').length));
+    final dateStr = createdAt.length >= 10 ? createdAt.substring(0, 10) : 'Today';
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -74,7 +103,7 @@ class RiskReportScreen extends StatelessWidget {
             const Icon(LucideIcons.calendar, size: 14, color: Colors.grey),
             const SizedBox(width: 8),
             Text(
-              'Generated on April 11, 2026 · ID: HG-8B3F11',
+              'Generated on $dateStr${id.isNotEmpty ? ' · ID: HG-$id' : ''}',
               style: TextStyle(color: Colors.grey[600], fontSize: 13, fontWeight: FontWeight.w500),
             ),
           ],
@@ -83,18 +112,14 @@ class RiskReportScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildRiskGauge(int score, String level) {
-    final color = level == 'high' ? Colors.red : level == 'moderate' ? Colors.amber[700]! : Colors.green;
-    
+  Widget _buildRiskGauge(int score, String level, Color color) {
     return Container(
       padding: const EdgeInsets.all(32),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: const Color(0xFFF1F5F9)),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 20, offset: const Offset(0, 4)),
-        ],
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 20, offset: const Offset(0, 4))],
       ),
       child: Column(
         children: [
@@ -106,9 +131,7 @@ class RiskReportScreen extends StatelessWidget {
               SizedBox(
                 width: 180,
                 height: 180,
-                child: CustomPaint(
-                  painter: GaugePainter(score: score, color: color),
-                ),
+                child: CustomPaint(painter: GaugePainter(score: score, color: color)),
               ),
               Column(
                 children: [
@@ -142,7 +165,10 @@ class RiskReportScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildAiFindings() {
+  Widget _buildAiFindings(Map<String, dynamic> a) {
+    final findings = a['analysis_findings'] as String? ??
+        'Your assessment has been processed. Review the metrics below and follow the personalised recommendations to improve your heart health.';
+
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
@@ -163,16 +189,19 @@ class RiskReportScreen extends StatelessWidget {
           const SizedBox(height: 4),
           const Text('POWERED BY HEARTGUARD AI MODEL', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.green, letterSpacing: 0.5)),
           const SizedBox(height: 16),
-          Text(
-            'Your assessment shows a moderate cardiovascular risk profile. The primary drivers are elevated BMI and borderline cholesterol levels. Proactive lifestyle changes can meaningfully reduce your risk within 3-6 months.',
-            style: TextStyle(color: Colors.grey[800], fontSize: 15, height: 1.5),
-          ),
+          Text(findings, style: TextStyle(color: Colors.grey[800], fontSize: 15, height: 1.5)),
         ],
       ),
     );
   }
 
-  Widget _buildMetricBreakdown(Map<String, double> vitals) {
+  Widget _buildMetricBreakdown(Map<String, dynamic> a) {
+    final vitals = data['vitals'] as Map<String, double>?;
+    final cholesterol = vitals?['cholesterol'] ?? AssessmentService.parseScore(a['cholesterol']);
+    final bmi = vitals?['bmi'] ?? AssessmentService.parseScore(a['bmi']);
+    final heartRate = vitals?['heart_rate'] ?? AssessmentService.parseScore(a['heart_rate']);
+    final glucose = vitals?['glucose'] ?? AssessmentService.parseScore(a['glucose']);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -186,19 +215,24 @@ class RiskReportScreen extends StatelessWidget {
           crossAxisSpacing: 12,
           childAspectRatio: 1.5,
           children: [
-            _buildMetricCard('Cholesterol', '${vitals['cholesterol']?.toInt()} mg/dL', 'Borderline'),
-            _buildMetricCard('BMI', '${vitals['bmi']}', 'Elevated'),
-            _buildMetricCard('Heart Rate', '${vitals['heart_rate']?.toInt()} BPM', 'Normal'),
-            _buildMetricCard('Glucose', '${vitals['glucose']?.toInt()} mg/dL', 'Normal'),
+            _buildMetricCard('Cholesterol', '${cholesterol.toInt()} mg/dL', _scoreStatus(cholesterol, 200, 240)),
+            _buildMetricCard('BMI', bmi.toStringAsFixed(1), _scoreStatus(bmi, 25, 30)),
+            _buildMetricCard('Heart Rate', '${heartRate.toInt()} BPM', _scoreStatus(heartRate, 100, 120)),
+            _buildMetricCard('Glucose', '${glucose.toInt()} mg/dL', _scoreStatus(glucose, 100, 126)),
           ],
         ),
       ],
     );
   }
 
+  String _scoreStatus(double v, double moderate, double high) {
+    if (v >= high) return 'Elevated';
+    if (v >= moderate) return 'Borderline';
+    return 'Normal';
+  }
+
   Widget _buildMetricCard(String label, String value, String status) {
     final statusColor = status == 'Normal' ? Colors.green : status == 'Elevated' ? Colors.red : Colors.amber[700]!;
-
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -223,15 +257,19 @@ class RiskReportScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildRecommendations() {
+  Widget _buildRecommendations(Map<String, dynamic> a) {
+    final diet = a['diet_plan'] as String? ?? 'Adopt a heart-healthy, low-saturated-fat diet. Increase soluble fibre and omega-3 fatty acids.';
+    final exercise = a['exercise_rec'] as String? ?? '150 minutes of moderate aerobic activity per week. Include strength training twice a week.';
+    final medical = a['medical_rec'] as String? ?? 'Follow up with your doctor to review your assessment results and discuss next steps.';
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text('Personalised Recommendations', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
         const SizedBox(height: 16),
-        _buildRecTile(LucideIcons.utensils, 'Diet Plan', 'Adopt a low-saturated-fat diet. Increase soluble fibre and omega-3s.', Colors.orange),
-        _buildRecTile(LucideIcons.activity, 'Exercise', '150 min of moderate aerobic activity per week.', Colors.blue),
-        _buildRecTile(LucideIcons.stethoscope, 'Medical', 'Schedule a follow-up with a cardiologist within 14 days.', Colors.red),
+        _buildRecTile(LucideIcons.utensils, 'Diet Plan', diet, Colors.orange),
+        _buildRecTile(LucideIcons.activity, 'Exercise', exercise, Colors.blue),
+        _buildRecTile(LucideIcons.stethoscope, 'Medical', medical, Colors.red),
       ],
     );
   }
@@ -270,10 +308,7 @@ class RiskReportScreen extends StatelessWidget {
       children: [
         ElevatedButton(
           onPressed: () => context.go('/chatbot'),
-          style: ElevatedButton.styleFrom(
-            minimumSize: const Size(double.infinity, 56),
-            backgroundColor: AppTheme.primary,
-          ),
+          style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 56), backgroundColor: AppTheme.primary),
           child: const Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -286,9 +321,7 @@ class RiskReportScreen extends StatelessWidget {
         const SizedBox(height: 12),
         OutlinedButton(
           onPressed: () => context.go('/dashboard'),
-          style: OutlinedButton.styleFrom(
-            minimumSize: const Size(double.infinity, 56),
-          ),
+          style: OutlinedButton.styleFrom(minimumSize: const Size(double.infinity, 56)),
           child: const Text('Back to Dashboard', style: TextStyle(fontWeight: FontWeight.bold)),
         ),
       ],
@@ -299,7 +332,6 @@ class RiskReportScreen extends StatelessWidget {
 class GaugePainter extends CustomPainter {
   final int score;
   final Color color;
-
   GaugePainter({required this.score, required this.color});
 
   @override
@@ -307,32 +339,15 @@ class GaugePainter extends CustomPainter {
     final center = Offset(size.width / 2, size.height / 2);
     final radius = size.width / 2;
 
-    final basePaint = Paint()
-      ..color = const Color(0xFFF1F5F9)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 12
-      ..strokeCap = StrokeCap.round;
-
-    final progressPaint = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 12
-      ..strokeCap = StrokeCap.round;
-
     canvas.drawArc(
       Rect.fromCircle(center: center, radius: radius),
-      math.pi * 0.75,
-      math.pi * 1.5,
-      false,
-      basePaint,
+      math.pi * 0.75, math.pi * 1.5, false,
+      Paint()..color = const Color(0xFFF1F5F9)..style = PaintingStyle.stroke..strokeWidth = 12..strokeCap = StrokeCap.round,
     );
-
     canvas.drawArc(
       Rect.fromCircle(center: center, radius: radius),
-      math.pi * 0.75,
-      (math.pi * 1.5) * (score / 100),
-      false,
-      progressPaint,
+      math.pi * 0.75, (math.pi * 1.5) * (score / 100), false,
+      Paint()..color = color..style = PaintingStyle.stroke..strokeWidth = 12..strokeCap = StrokeCap.round,
     );
   }
 
