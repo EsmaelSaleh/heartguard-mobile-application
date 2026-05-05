@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:go_router/go_router.dart';
 import '../theme.dart';
+import '../services/onboarding_service.dart';
 
 class OnboardingBasicInfoScreen extends StatefulWidget {
   const OnboardingBasicInfoScreen({super.key});
@@ -12,9 +13,54 @@ class OnboardingBasicInfoScreen extends StatefulWidget {
 
 class _OnboardingBasicInfoScreenState extends State<OnboardingBasicInfoScreen> {
   String? _gender;
-  final _ageController = TextEditingController();
-  final _weightController = TextEditingController();
-  final _heightController = TextEditingController();
+  final _dobController = TextEditingController();
+  bool _isLoading = false;
+
+  Future<void> _handleContinue() async {
+    if (_gender == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select your gender'), backgroundColor: Colors.red),
+      );
+      return;
+    }
+    if (_dobController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter your date of birth'), backgroundColor: Colors.red),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    await OnboardingService.saveProfile(
+      gender: _gender!,
+      dateOfBirth: _dobController.text.trim(),
+    );
+
+    if (mounted) {
+      setState(() => _isLoading = false);
+      context.go('/onboarding/lifestyle');
+    }
+  }
+
+  Future<void> _pickDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: DateTime(1990),
+      firstDate: DateTime(1920),
+      lastDate: DateTime.now().subtract(const Duration(days: 365 * 10)),
+    );
+    if (picked != null) {
+      _dobController.text =
+          '${picked.year}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}';
+    }
+  }
+
+  @override
+  void dispose() {
+    _dobController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -32,13 +78,10 @@ class _OnboardingBasicInfoScreenState extends State<OnboardingBasicInfoScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text(
-              'Tell us about yourself',
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900),
-            ),
+            const Text('Tell us about yourself', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900)),
             const SizedBox(height: 8),
             Text(
-              'This helps us calculate your BMI and risk factors accurately.',
+              'This helps us calculate your risk factors accurately.',
               style: TextStyle(color: Colors.grey[600], fontSize: 14),
             ),
             const SizedBox(height: 32),
@@ -52,43 +95,24 @@ class _OnboardingBasicInfoScreenState extends State<OnboardingBasicInfoScreen> {
               ],
             ),
             const SizedBox(height: 24),
-            Row(
-              children: [
-                Expanded(
-                  child: _buildTextField(
-                    controller: _ageController,
-                    label: 'Age',
-                    hint: 'Years',
-                    keyboardType: TextInputType.number,
+            const Text('Date of Birth', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+            const SizedBox(height: 8),
+            GestureDetector(
+              onTap: _pickDate,
+              child: AbsorbPointer(
+                child: TextField(
+                  controller: _dobController,
+                  decoration: InputDecoration(
+                    hintText: 'YYYY-MM-DD',
+                    prefixIcon: const Icon(LucideIcons.calendar, size: 20),
+                    filled: true,
+                    fillColor: Colors.grey[50],
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey[200]!)),
+                    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey[200]!)),
+                    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppTheme.primary)),
                   ),
                 ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Container(), // Spacer
-                ),
-              ],
-            ),
-            const SizedBox(height: 24),
-            Row(
-              children: [
-                Expanded(
-                  child: _buildTextField(
-                    controller: _weightController,
-                    label: 'Weight',
-                    hint: 'kg',
-                    keyboardType: TextInputType.number,
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: _buildTextField(
-                    controller: _heightController,
-                    label: 'Height',
-                    hint: 'cm',
-                    keyboardType: TextInputType.number,
-                  ),
-                ),
-              ],
+              ),
             ),
             const SizedBox(height: 48),
             Row(
@@ -109,11 +133,11 @@ class _OnboardingBasicInfoScreenState extends State<OnboardingBasicInfoScreen> {
                 Expanded(
                   flex: 2,
                   child: ElevatedButton(
-                    onPressed: () => context.go('/onboarding/lifestyle'),
-                    style: ElevatedButton.styleFrom(
-                      minimumSize: const Size(0, 56),
-                    ),
-                    child: const Text('Continue'),
+                    onPressed: _isLoading ? null : _handleContinue,
+                    style: ElevatedButton.styleFrom(minimumSize: const Size(0, 56)),
+                    child: _isLoading
+                        ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                        : const Text('Continue'),
                   ),
                 ),
               ],
@@ -142,50 +166,12 @@ class _OnboardingBasicInfoScreenState extends State<OnboardingBasicInfoScreen> {
               const SizedBox(height: 8),
               Text(
                 label,
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: isSelected ? AppTheme.primary : Colors.grey[600],
-                ),
+                style: TextStyle(fontWeight: FontWeight.bold, color: isSelected ? AppTheme.primary : Colors.grey[600]),
               ),
             ],
           ),
         ),
       ),
-    );
-  }
-
-  Widget _buildTextField({
-    required TextEditingController controller,
-    required String label,
-    required String hint,
-    required TextInputType keyboardType,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-        ),
-        const SizedBox(height: 8),
-        TextField(
-          controller: controller,
-          keyboardType: keyboardType,
-          decoration: InputDecoration(
-            hintText: hint,
-            filled: true,
-            fillColor: Colors.grey[50],
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: Colors.grey[200]!),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: Colors.grey[200]!),
-            ),
-          ),
-        ),
-      ],
     );
   }
 }
