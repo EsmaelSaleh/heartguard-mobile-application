@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 import '../theme.dart';
-import '../services/auth_service.dart';
+import '../providers/auth_provider.dart';
 
 class SignupScreen extends StatefulWidget {
   const SignupScreen({super.key});
@@ -23,26 +24,32 @@ class _SignupScreenState extends State<SignupScreen> {
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isLoading = true);
-    
-    final success = await AuthService().signup(
-      _nameController.text,
-      _emailController.text,
+
+    final auth = context.read<AuthProvider>();
+    final error = await auth.signup(
+      _nameController.text.trim(),
+      _emailController.text.trim(),
       _passwordController.text,
     );
 
     if (mounted) {
       setState(() => _isLoading = false);
-      if (success) {
+      if (error == null) {
         context.go('/onboarding');
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Account creation failed. Email might already be in use.'),
-            backgroundColor: Colors.red,
-          ),
+          SnackBar(content: Text(error), backgroundColor: Colors.red),
         );
       }
     }
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
   }
 
   @override
@@ -52,7 +59,7 @@ class _SignupScreenState extends State<SignupScreen> {
       appBar: AppBar(
         leading: IconButton(
           icon: const Icon(LucideIcons.chevronLeft),
-          onPressed: () => Navigator.pop(context),
+          onPressed: () => context.go('/'),
         ),
         title: const Text('Create Account'),
       ),
@@ -91,6 +98,7 @@ class _SignupScreenState extends State<SignupScreen> {
                     label: 'Email Address',
                     hint: 'name@example.com',
                     icon: LucideIcons.mail,
+                    keyboardType: TextInputType.emailAddress,
                     validator: (value) {
                       if (value == null || value.isEmpty) return 'Please enter your email';
                       if (!value.contains('@')) return 'Please enter a valid email';
@@ -120,12 +128,10 @@ class _SignupScreenState extends State<SignupScreen> {
             const SizedBox(height: 32),
             ElevatedButton(
               onPressed: _isLoading ? null : _handleSignup,
-              style: ElevatedButton.styleFrom(
-                minimumSize: const Size(double.infinity, 56),
-              ),
-              child: _isLoading 
-                ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                : const Text('Create Account'),
+              style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 56)),
+              child: _isLoading
+                  ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                  : const Text('Create Account'),
             ),
             const SizedBox(height: 24),
             Row(
@@ -134,10 +140,7 @@ class _SignupScreenState extends State<SignupScreen> {
                 Text("Already have an account? ", style: TextStyle(color: Colors.grey[600])),
                 TextButton(
                   onPressed: () => context.go('/login'),
-                  child: const Text(
-                    'Log in',
-                    style: TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold),
-                  ),
+                  child: const Text('Log in', style: TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold)),
                 ),
               ],
             ),
@@ -154,42 +157,29 @@ class _SignupScreenState extends State<SignupScreen> {
     required IconData icon,
     bool obscure = false,
     Widget? suffix,
+    TextInputType? keyboardType,
     String? Function(String?)? validator,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-        ),
+        Text(label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
         const SizedBox(height: 8),
         TextFormField(
           controller: controller,
           obscureText: obscure,
           validator: validator,
+          keyboardType: keyboardType,
           decoration: InputDecoration(
             hintText: hint,
             prefixIcon: Icon(icon, size: 20),
             suffixIcon: suffix,
             filled: true,
             fillColor: Colors.grey[50],
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: Colors.grey[200]!),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: Colors.grey[200]!),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: AppTheme.primary),
-            ),
-            errorBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: Colors.red),
-            ),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey[200]!)),
+            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey[200]!)),
+            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppTheme.primary)),
+            errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.red)),
           ),
         ),
       ],
