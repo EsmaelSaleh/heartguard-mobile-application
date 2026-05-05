@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 import '../theme.dart';
-import '../services/auth_service.dart';
+import '../providers/auth_provider.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -22,25 +23,34 @@ class _LoginScreenState extends State<LoginScreen> {
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isLoading = true);
-    
-    final success = await AuthService().login(
-      _emailController.text,
+
+    final auth = context.read<AuthProvider>();
+    final error = await auth.login(
+      _emailController.text.trim(),
       _passwordController.text,
     );
 
     if (mounted) {
       setState(() => _isLoading = false);
-      if (success) {
-        context.go('/dashboard');
+      if (error == null) {
+        if (auth.onboardingComplete) {
+          context.go('/dashboard');
+        } else {
+          context.go('/onboarding');
+        }
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Invalid email or password. Please try again.'),
-            backgroundColor: Colors.red,
-          ),
+          SnackBar(content: Text(error), backgroundColor: Colors.red),
         );
       }
     }
+  }
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
   }
 
   @override
@@ -50,7 +60,7 @@ class _LoginScreenState extends State<LoginScreen> {
       appBar: AppBar(
         leading: IconButton(
           icon: const Icon(LucideIcons.chevronLeft),
-          onPressed: () => Navigator.pop(context),
+          onPressed: () => context.go('/'),
         ),
         title: const Text('Sign In'),
       ),
@@ -78,6 +88,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     label: 'Email Address',
                     hint: 'name@example.com',
                     icon: LucideIcons.mail,
+                    keyboardType: TextInputType.emailAddress,
                     validator: (value) {
                       if (value == null || value.isEmpty) return 'Please enter your email';
                       if (!value.contains('@')) return 'Please enter a valid email';
@@ -104,22 +115,15 @@ class _LoginScreenState extends State<LoginScreen> {
                 ],
               ),
             ),
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton(
-                onPressed: () {},
-                child: const Text('Forgot Password?'),
-              ),
-            ),
             const SizedBox(height: 24),
             ElevatedButton(
               onPressed: _isLoading ? null : _handleLogin,
               style: ElevatedButton.styleFrom(
                 minimumSize: const Size(double.infinity, 56),
               ),
-              child: _isLoading 
-                ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                : const Text('Sign In'),
+              child: _isLoading
+                  ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                  : const Text('Sign In'),
             ),
             const SizedBox(height: 24),
             Row(
@@ -148,42 +152,29 @@ class _LoginScreenState extends State<LoginScreen> {
     required IconData icon,
     bool obscure = false,
     Widget? suffix,
+    TextInputType? keyboardType,
     String? Function(String?)? validator,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-        ),
+        Text(label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
         const SizedBox(height: 8),
         TextFormField(
           controller: controller,
           obscureText: obscure,
           validator: validator,
+          keyboardType: keyboardType,
           decoration: InputDecoration(
             hintText: hint,
             prefixIcon: Icon(icon, size: 20),
             suffixIcon: suffix,
             filled: true,
             fillColor: Colors.grey[50],
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: Colors.grey[200]!),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: Colors.grey[200]!),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: AppTheme.primary),
-            ),
-            errorBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: Colors.red),
-            ),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey[200]!)),
+            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey[200]!)),
+            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppTheme.primary)),
+            errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.red)),
           ),
         ),
       ],
